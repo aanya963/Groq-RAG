@@ -1,0 +1,36 @@
+Service:	            Responsibility:
+
+PdfService	            Read PDF
+ChunkService	        Split text
+EmbeddingService	    Convert text → vectors (so machines can measure semantic similarity.)
+VectorDbService	        Store/search vectors
+GroqService	            Ask LLM
+
+
+When you run:
+dotnet run
+
+Execution starts in:
+Program.cs
+
+Embedding:
+- Embeddings convert text → numbers (vectors) so machines can measure semantic similarity.
+- Project Uses This Embedding Model : nomic-embed-text
+- This model runs locally through Ollama API.
+- API endpoint : http://localhost:11434/api/embeddings
+
+VectorDb:
+- A vector database stores embeddings (vectors) and allows similarity search.
+- Database: PostgreSQL
+- Extension: pgvector
+- pgvector allows PostgreSQL to store vector columns and perform similarity search.
+- Responsibility:
+    Store embeddings
+    Search embeddings
+    
+Example table:
+    documents
+    ------------------------
+    id
+    content
+    embedding (vector)

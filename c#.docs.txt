@@ -1,0 +1,4 @@
+The Main method in program.cs is the entry point of a C# application. when we do dotnet run
+the .NET runtime looks for a method called Main() to start the program.
+So execution begins here : Program.Main()
+It must be static so the .NET runtime can call it directly without creating an instance of the Program class.

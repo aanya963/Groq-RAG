@@ -1,0 +1,56 @@
+User Question
+      ↓
+EmbeddingService
+      ↓
+VectorDbService (search)
+      ↓
+Retrieve chunks
+      ↓
+GroqService
+      ↓
+LLM Answer
+      ↓
+Console Output
+
+
+
+Project flow is:
+
+    PDF
+        ↓
+    Extract text
+        ↓
+    Chunk text
+        ↓
+    Create embeddings
+        ↓
+    Store embeddings in Vector Database
+
+Then during chat:
+
+    User Question
+        ↓
+    Create embedding
+        ↓
+    Search similar chunks in vector DB
+        ↓
+    Send chunks as context to LLM
+        ↓
+    LLM generates answer
+
+
+//PDF → Extract Text → Chunk → Embedding → Vector DB → Retrieval → LLM Answer
+
+    PDF
+        ↓
+    PdfService → Extract text
+        ↓
+    ChunkService → Split text
+        ↓
+    EmbeddingService → Convert text → vectors
+        ↓
+    VectorDbService → Store vectors
+        ↓
+    Search similar vectors
+        ↓
+    GroqService → LLM answer

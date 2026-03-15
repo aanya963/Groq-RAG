@@ -1,0 +1,23 @@
+postgre sql connection error :
+echo 'export PATH="/Library/PostgreSQL/17/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+psql -U postgres
+account: postgres
+Password: admin
+
+username: postgres
+password: (your password)
+port: 5432
+
+CREATE DATABASE ragdb;
+\c ragdb
+CREATE EXTENSION vector;
+
+CREATE TABLE documents (
+    id SERIAL PRIMARY KEY,
+    content TEXT,
+    embedding VECTOR(1536)
+);
+
+//each row stores: text chunk + vector representation
