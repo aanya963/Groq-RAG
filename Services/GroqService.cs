@@ -39,8 +39,8 @@ namespace RAGDemo.Services
             This tells the API:
                 I am authenticated
                 The request header becomes:
-                Authorization: Bearer sk_123abc
-                Without this → API call will fail.
+                    Authorization: Bearer sk_123abc
+                    “I am allowed to use this API” Without this → API call will fail.
             */
             _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
         }
@@ -87,7 +87,17 @@ namespace RAGDemo.Services
             var json = await response.Content.ReadAsStringAsync();
             //This converts the JSON string into a structure C# can navigate.
             using var doc = JsonDocument.Parse(json);
-            //Extract the answer
+            /*Extract the answer
+                {
+                    "choices": [
+                        {
+                        "message": {
+                            "content": "AI is the simulation..."
+                        }
+                        }
+                    ]
+                }
+            */
             return doc.RootElement
                 .GetProperty("choices")[0]
                 .GetProperty("message")
