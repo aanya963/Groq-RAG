@@ -2,6 +2,7 @@
 System.Text: 
 Provides encoding utilities like: UTF8, ASCII
 Used when sending HTTP request content.
+Convert the text into UTF-8 bytes before sending it over the network.
 
 System.Text.Json
 Serialize objects → JSON
@@ -19,12 +20,10 @@ namespace RAGDemo.Services
     public class EmbeddingService
     {
         /*
-            HttpClient Field
-            This creates an HTTP client object.
-            Why?
-                Because we must send API requests to Ollama.
-
-            
+            _http is a variable that stores an HTTP client object.
+            So _http is the object that sends HTTP requests.
+            here we send API requests to Ollama.
+            Readonly : Value can only be assigned once.
         */
         private readonly HttpClient _http;
         /* The constructor runs when the object is created.
@@ -34,6 +33,7 @@ namespace RAGDemo.Services
         */
         public EmbeddingService()
         {
+            //creates a new HttpClient object and assigns it to that variable.
             _http = new HttpClient();
         }
         /*
@@ -54,6 +54,7 @@ namespace RAGDemo.Services
                 Encoding.UTF8
                     Specifies character encoding.
                     Most APIs require UTF-8 encoding.
+                    Convert the text into UTF-8 bytes before sending it over the network.
                 Content Type : application/json
                     This tells the server:
                     "I'm sending JSON data"
@@ -71,12 +72,13 @@ namespace RAGDemo.Services
             //Read the Response
             var json = await response.Content.ReadAsStringAsync();
             //This converts the JSON string into a structured document object.
+            //doc represents the entire JSON response.
             using var doc = JsonDocument.Parse(json);
             /* Extract the Embedding Vector
-                Convert JSON Array → C# Float Array
-                EnumerateArray() : Loops through JSON array elements.
+                retrieves the embedding field from JSON.
+                EnumerateArray() : This converts the JSON array into something we can loop through.
                 Select(x => x.GetSingle()) : Converts each JSON number to float.
-                ToArray() : Creates: float[]
+                ToArray() : Creates float array
             */
             var vector = doc.RootElement
                 .GetProperty("embedding")

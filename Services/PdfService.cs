@@ -35,9 +35,11 @@ namespace RAGDemo.Services
                         metadata
                 3. using(...)
                     It ensures the resource is automatically closed.
+                    Frees memory
                     If we don’t close them → memory leaks.
                     So when this block ends:
                         document.Dispose()
+
             */
             using (var document = PdfDocument.Open(path))
             {

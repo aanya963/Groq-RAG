@@ -80,3 +80,4 @@
 /Users/aanya/Desktop/Groq-RAG/obj/Debug/net10.0/RAGDemo.pdb
 /Users/aanya/Desktop/Groq-RAG/obj/Debug/net10.0/RAGDemo.genruntimeconfig.cache
 /Users/aanya/Desktop/Groq-RAG/obj/Debug/net10.0/ref/RAGDemo.dll
+/Users/aanya/Desktop/Groq-RAG/obj/Debug/net10.0/RAGDemo.sourcelink.json

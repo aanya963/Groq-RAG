@@ -8,9 +8,6 @@ Npgsql: Official PostgreSQL driver for .NET.
             read results
             
 Pgvector : Library to support vector datatype.
-Pgvector.Npgsql : Integration between Npgsql and pgvector.
-                  Allows passing vectors like:
-                  new Vector(embedding)
 
 - Responsibility of this class:
     Store embeddings
@@ -19,7 +16,6 @@ Pgvector.Npgsql : Integration between Npgsql and pgvector.
 using DotNetEnv; 
 using Npgsql;
 using Pgvector;
-using Pgvector.Npgsql;
 
 namespace RAGDemo.Services
 {
@@ -28,6 +24,7 @@ namespace RAGDemo.Services
         private readonly string connString;
 
         // Static constructor to load .env once
+        
         //A static constructor runs once when the class loads.
         //This reads the .env file.
         static VectorDbService()
@@ -49,8 +46,8 @@ namespace RAGDemo.Services
             connString = $"Host={host};Port={port};Username={user};Password={pass};Database={db}";
         }
         /*  saves one chunk into the database.
-            Input: text → chunk text
-            embedding → vector for that text
+            Input : text → chunk text
+                    embedding → vector for that text
             This prepares a PostgreSQL connection configuration.
         */
         public async Task InsertChunk(string text, float[] embedding)
@@ -60,7 +57,6 @@ namespace RAGDemo.Services
             var builder = new NpgsqlDataSourceBuilder(connString);
             //Enable vector support
             builder.UseVector();
-            //Build the datasource
             //This creates an actual database connection factory.
             // dataSource = "ready-to-open database connection"
             var dataSource = builder.Build();
@@ -119,6 +115,9 @@ namespace RAGDemo.Services
             //Extracting the value
             //Reads the first column
             //Adds it to the results list.
+            //Move to next row (asynchronously)
+            //Take first column from current row
+            //You selected only one column. So : Column 0 = content
             while (await reader.ReadAsync())
             {
                 results.Add(reader.GetString(0));

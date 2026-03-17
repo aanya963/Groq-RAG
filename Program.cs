@@ -6,6 +6,7 @@ class Program
     //static: belongs to the class itself, no obj needed
     //async: Allows await calls, Needed for API calls and database calls
     // Task: Async method return type: This program will run asynchronously.
+    //Task = "This work is still running."
     static async Task Main()
     {
         //creating objects of each service
@@ -74,9 +75,9 @@ class Program
             var embedding = await embeddingService.GenerateEmbedding(chunk);
 
         /*Step 5 — Store in Vector Database
-            Database table:documents
-            content	: chunk text	
-            embedding: vector
+            Database table : documents
+            chunk	: chunk text 	
+            embedding : vector
 
             So the DB stores: chunk text + vector
         */

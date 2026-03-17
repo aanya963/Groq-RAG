@@ -2,3 +2,22 @@ The Main method in program.cs is the entry point of a C# application. when we do
 the .NET runtime looks for a method called Main() to start the program.
 So execution begins here : Program.Main()
 It must be static so the .NET runtime can call it directly without creating an instance of the Program class.
+
+Your Main method probably contains await calls like:
+
+await groqService.AskLLM(...)
+await vectorDb.InsertChunk(...)
+await vectorDb.SearchSimilar(...)
+
+Since await is used, the method must be async.
+
+And Async methods must return one of these :
+    Task - async method with no return value
+    Task<T> - async method returns a value
+    void (only for event handlers)
+    ValueTask
+
+Task represents the ongoing asynchronous work of the Main method. The runtime waits for that Task to complete before exiting the program.
+
+async enables the use of await inside a method, while Task represents the asynchronous operation that the method returns. 
+The caller can await the Task to get the result when the operation completes.

@@ -20,6 +20,8 @@ namespace RAGDemo.Services
         */
         public List<string> ChunkText(string text, int chunkSize = 500)
         {
+            //var means the compiler will automatically determine the variable type.
+            //List<string> -> A dynamic collection that stores strings -> a resizable array.
             var chunks = new List<string>();
 
             for (int i = 0; i < text.Length; i += chunkSize)
