@@ -1,34 +1,41 @@
-/*
-A namespace is just a logical grouping of classes.
-This class belongs to the Services module.
-*/
+using System.Text;
+
 namespace RAGDemo.Services
 {
     public class ChunkService
     {
-        /* 
-            This defines a service class responsible for : Text → smaller pieces
-
-            Why do we need this?
-                Because LLMs and embedding models cannot process huge documents at once.
-            Example:
-                A PDF might contain:
-                15,000 characters
-            But embedding models work best with small chunks.
-
-            Function returns : List of text chunks
-        */
-        public List<string> ChunkText(string text, int chunkSize = 500)
+        public List<string> ChunkText(string text, int chunkSize = 500, int overlap=100)
         {
-            //var means the compiler will automatically determine the variable type.
-            //List<string> -> A dynamic collection that stores strings -> a resizable array.
             var chunks = new List<string>();
+            // Split on sentence boundaries instead of raw character count
+            var sentences = text.Split(new [] { ". ", ".\n", "! ", "? " }, StringSplitOptions.RemoveEmptyEntries);
+            
+            var currentChunk = new StringBuilder();
+            
 
-            for (int i = 0; i < text.Length; i += chunkSize)
+            foreach (var sentence in sentences)
             {
-                var length = Math.Min(chunkSize, text.Length - i);
-                chunks.Add(text.Substring(i, length));
+                // If adding this sentence exceeds chunkSize, save current chunk and start new one
+
+                if(currentChunk.Length + sentence.Length > chunkSize && currentChunk.Length > 0)
+                {
+                    chunks.Add(currentChunk.ToString().Trim());
+                    
+                    // Carry the last `overlap` characters into the next chunk
+                    var currentText = currentChunk.ToString();
+                    var overlapText = currentText.Length > overlap
+                        ? currentText.Substring(currentText.Length - overlap)
+                        : currentText;
+                    
+                    currentChunk.Clear();
+                    currentChunk.Append(overlapText);
+
+                }
+                currentChunk.Append(sentence + ". ");
             }
+            // Don't forget the last chunk
+            if (currentChunk.Length > 0)
+                chunks.Add(currentChunk.ToString().Trim());
 
             return chunks;
         }

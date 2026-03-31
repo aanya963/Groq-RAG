@@ -1,0 +1,54 @@
+"SELECT content FROM documents ORDER BY embedding <-> @embedding LIMIT 3"
+```
+
+Two problems here:
+
+**Problem 1 — You always return exactly 3 chunks, no matter what.**
+If the user asks *"What is the capital of France?"* and your PDF is about cooking recipes, pgvector will still confidently return 3 chunks. Your LLM then gets completely irrelevant context and either hallucinates or gives a wrong answer.
+
+**Problem 2 — `<->` is Euclidean distance, not cosine similarity.**
+For text embeddings, **cosine similarity** is the correct metric. It measures the *angle* between two vectors — which reflects semantic similarity. Euclidean distance measures raw spatial distance, which is heavily influenced by vector magnitude and gives worse results for text.
+
+Visually:
+```
+Euclidean distance:          Cosine similarity:
+measures this gap ←——→      measures this angle ∠
+(affected by magnitude)     (only cares about direction/meaning)
+```
+
+For text, two sentences can mean the same thing but have different magnitudes. Cosine similarity handles this correctly.
+
+---
+
+### The Fix: Cosine Similarity + Relevance Threshold
+```
+User question embedded
+        ↓
+Find top-5 chunks by cosine similarity
+        ↓
+Filter out anything below similarity threshold (e.g. 0.5)
+        ↓
+If nothing passes threshold → "I don't know"
+If results pass → send to LLM
+
+
+====== 
+```
+
+---
+
+### Operator Cheatsheet
+
+| Operator | Metric | Use for |
+|---|---|---|
+| `<->` | Euclidean distance | Images, spatial data |
+| `<=>` | Cosine distance | Text embeddings ✅ |
+| `<#>` | Negative inner product | When vectors are normalized |
+
+---
+
+### Tuning the Threshold
+```
+threshold = 0.3  → very loose, returns more chunks, risk of noise
+threshold = 0.5  → balanced, good default
+threshold = 0.7  → very strict, only highly relevant chunks
