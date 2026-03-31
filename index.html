@@ -88,30 +88,50 @@
 </div>
 
 <script>
-    async function ask() {
-        let q = document.getElementById("question").value;
-        let answerBox = document.getElementById("answer");
+   // Generate a unique ID for this browser session
+const conversationId = crypto.randomUUID();
 
-        if (!q) return;
+async function ask() {
+    let q = document.getElementById("question").value;
+    let answerBox = document.getElementById("answer");
 
-        answerBox.innerHTML = "<span class='loading'>Thinking...</span>";
+    if (!q) return;
 
-        try {
-            let res = await fetch("http://localhost:5000/ask", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ question: q })
-            });
+    answerBox.innerHTML = "<span class='loading'>Thinking...</span>";
 
-            let data = await res.json();
-            answerBox.innerText = data.answer;
-        } catch (err) {
-            answerBox.innerText = "Something went wrong.";
-        }
+    try {
+        let res = await fetch("http://localhost:5000/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                question: q,
+                conversationId: conversationId  // send the same ID every time
+            })
+        });
+
+        let data = await res.json();
+        answerBox.innerText = data.answer;
+    } catch (err) {
+        answerBox.innerText = "Something went wrong.";
     }
+}
+/*
 
+
+### How Memory Works Now
+```
+Browser opens → generates one conversationId (e.g. "abc-123")
+                stays the same for the whole session
+
+Question 1 → POST { question: "What is this doc about?",  conversationId: "abc-123" }
+           ← "It's about financial reporting"
+           → history["abc-123"] = [user: "What is...", assistant: "It's about..."]
+
+Question 2 → POST { question: "Elaborate on that", conversationId: "abc-123" }
+           → history["abc-123"] found → passed to LLM
+           ← "The financial reporting covers..." ✅ remembers previous turn
+
+        */
     document.getElementById("question").addEventListener("keypress", function(e) {
         if (e.key === "Enter") {
             ask();

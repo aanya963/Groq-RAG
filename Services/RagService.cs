@@ -9,6 +9,9 @@ namespace RAGDemo.Services
         private readonly GroqService _groqService;
         private readonly FileHashService _hashService;
 
+        // In-memory store: conversationId → list of messages
+        private readonly Dictionary<string, List<ChatMessage>> _conversations = new();
+
         public RagService(
             PdfService pdfService,
             ChunkService chunkService,
@@ -49,16 +52,48 @@ namespace RAGDemo.Services
             Console.WriteLine("PDF Indexed!");
         }
 
-        public async Task<string> AskAsync(string question)
+        public async Task<string> AskAsync(string question, string conversationId)
         {
+            // If client sends no conversationId, generate a fallback
+            if (string.IsNullOrEmpty(conversationId))
+                conversationId = "default";
+            // Get or create history for this conversation
+            if (!_conversations.ContainsKey(conversationId))
+                _conversations[conversationId] = new List<ChatMessage>();
+
+            var history = _conversations[conversationId];
+
+            // Retrieve relevant chunks
             var queryEmbedding = await _embeddingService.GenerateEmbedding(question);
             var chunks = await _vectorDb.SearchSimilar(queryEmbedding);
 
             if (!chunks.Any())
-                return "I couldn't find relevant information in the document to answer your question.";
+            {
+                var notFound = "I couldn't find relevant information in the document to answer your question.";
+                
+                // Still save to history so follow-ups work
+                history.Add(new ChatMessage("user", question));
+                history.Add(new ChatMessage("assistant", notFound));
+                return notFound;
+            }
 
             var context = string.Join("\n", chunks);
-            return await _groqService.AskLLM(question, context);
+            var answer = await _groqService.AskLLM(question, context, history);
+
+            // Save this turn to history
+            history.Add(new ChatMessage("user", question));
+            history.Add(new ChatMessage("assistant", answer));
+
+            // Keep last 10 messages to avoid token limit issues
+            if (history.Count > 10)
+                history.RemoveRange(0, history.Count - 10);
+
+            return answer;
+        }
+
+        internal async Task AskAsync(string question, object conversationId)
+        {
+            throw new NotImplementedException();
         }
     }
 }

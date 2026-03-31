@@ -7,10 +7,10 @@ namespace RAGDemo.Services
     {
         private readonly HttpClient _http;
 
-        // HttpClient is now injected, not created internally
+        // HttpClient is now injected, not created internally, HttpClient is injected from outside
         public EmbeddingService(HttpClient http)
         {
-            _http = http;
+            _http = http; // swappable, testable
         }
 
         public async Task<float[]> GenerateEmbedding(string text)

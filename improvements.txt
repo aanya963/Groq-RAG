@@ -1,54 +1,356 @@
-"SELECT content FROM documents ORDER BY embedding <-> @embedding LIMIT 3"
-```
-
-Two problems here:
-
-**Problem 1 — You always return exactly 3 chunks, no matter what.**
-If the user asks *"What is the capital of France?"* and your PDF is about cooking recipes, pgvector will still confidently return 3 chunks. Your LLM then gets completely irrelevant context and either hallucinates or gives a wrong answer.
-
-**Problem 2 — `<->` is Euclidean distance, not cosine similarity.**
-For text embeddings, **cosine similarity** is the correct metric. It measures the *angle* between two vectors — which reflects semantic similarity. Euclidean distance measures raw spatial distance, which is heavily influenced by vector magnitude and gives worse results for text.
-
-Visually:
-```
-Euclidean distance:          Cosine similarity:
-measures this gap ←——→      measures this angle ∠
-(affected by magnitude)     (only cares about direction/meaning)
-```
-
-For text, two sentences can mean the same thing but have different magnitudes. Cosine similarity handles this correctly.
-
----
-
-### The Fix: Cosine Similarity + Relevance Threshold
-```
-User question embedded
+Basic script with bugs
         ↓
-Find top-5 chunks by cosine similarity
+✅ Improvement #1 — Sentence-aware chunking with overlap
+        Before :
+        It cut the text **every 500 characters, blindly.** It had no idea where sentences started or ended.
+
+        So this sentence:
+        "The contract states that payment must be made within 30 days of invoice."
+
+        Could get split into:
+        Chunk 1: "The contract states that payment must be made within 30 da"
+        Chunk 2: "ys of invoice."
+
+        Now **neither chunk makes sense on its own.** When pgvector searches for relevant chunks, these broken pieces either score poorly or deliver garbage context to the LLM.
+
+        ### What did we fix?
+        Two things:
+                **1 — Split on sentence boundaries instead of character count**
+                We split the text on `". "`, `".\n"`, `"! "`, `"? "` — natural points where sentences end. Now chunks always contain complete thoughts.
+                **2 — Added overlap between chunks**
+                The last ~100 characters of Chunk N become the first ~100 characters of Chunk N+1.
+                Why? Because important information often **spans two chunks**. Without overlap:
+                        Chunk 1: "John signed the contract on Monday."
+                        Chunk 2: "The payment terms were 30 days."
+                                ↑ connection between John and payment terms is lost
+                With overlap:
+                Chunk 1: "John signed the contract on Monday."
+                Chunk 2: "John signed the contract on Monday. The payment terms were 30 days."
+                        ↑ connection preserved
+
+        ### The fix in simple terms
+        Before: cut rope every 500cm regardless of knots
+        After:  cut at natural joints, keep 10cm overlap at each cut
+
+✅ Improvement #2 — Document fingerprinting (no more duplicates)
+        var text = pdfService.ExtractText("Data/documents.pdf");
+        var chunks = chunkService.ChunkText(text);
+
+        foreach (var chunk in chunks)
+        {
+                var embedding = await embeddingService.GenerateEmbedding(chunk);
+                await vectorDb.InsertChunk(chunk, embedding);
+        }
+        **There was no check.** No "have I already done this?" Every restart blindly re-inserted everything.
+
+        So if your app restarted 5 times:
+        documents table:
+        ┌─────┬──────────────────────────────┐
+        │ id  │ content                      │
+        ├─────┼──────────────────────────────┤
+        │  1  │ "The contract states..."     │  ← run 1
+        │  2  │ "Payment terms are..."       │  ← run 1
+        │  3  │ "The contract states..."     │  ← run 2 (duplicate)
+        │  4  │ "Payment terms are..."       │  ← run 2 (duplicate)
+        │  5  │ "The contract states..."     │  ← run 3 (duplicate)
+        ...and so on
+
+        Now when pgvector finds the top 3 similar chunks, all 3 might be **the same chunk repeated.** Your LLM receives:
+        Context:
+        "The contract states..."
+        "The contract states..."
+        "The contract states..."
+
+        Retrieval is completely broken. You're wasting tokens and getting worse answers.
+
+        ### What did we fix?
+
+        **Content-based fingerprinting using MD5 hashing.**
+
+        A hash is a short unique fingerprint of a file's contents. Same file = same hash, always. Different file = different hash.
+        documents.pdf → MD5 hash → "a3f8c2d1e9b4..."
+        We created a new table `indexed_documents` that stores this hash. On startup:
+        App starts
         ↓
-Filter out anything below similarity threshold (e.g. 0.5)
+        Compute hash of documents.pdf
         ↓
-If nothing passes threshold → "I don't know"
-If results pass → send to LLM
+        Does this hash exist in indexed_documents?
+        ├── YES → "Already indexed, skipping..." → start API immediately
+        └── NO  → index the PDF → save hash → start API
+
+        ### Two benefits in one fix
+
+        **Benefit 1 — Idempotent indexing**
+        You can restart the app 100 times. It only ever indexes once. Safe by design.
+
+        **Benefit 2 — Automatic re-indexing on document change**
+        Update your PDF? The hash changes. The system detects it and re-indexes automatically. No manual intervention needed.
+        
+        Old PDF hash: "a3f8c2d1e9b4..."
+        New PDF hash: "f7d2a1c8b3e9..."  ← different → triggers re-indexing
+
+        After:  check if the meal is already cooked before starting
+
+        FileHashService.cs          → computes MD5 hash of any file
+        indexed_documents table     → stores hash + filename + timestamp
+        VectorDbService.cs          → added IsAlreadyIndexed() and MarkAsIndexed()
+        Program.cs                  → added hash check before indexing block
+
+✅ Improvement #3 — Cosine similarity + relevance threshold + HNSW index
+
+        Fix 1 — Switched to cosine similarity (<=>)
+                -- Before: Euclidean distance
+                ORDER BY embedding <-> @embedding
+
+                -- After: Cosine distance (1 - cosine distance = cosine similarity)
+                SELECT content, 1 - (embedding <=> @embedding) AS similarity
+                ORDER BY embedding <=> @embedding
+
+                `1 - cosine_distance` gives us a similarity score between 0 and 1:
+                similarity = 1.0  → identical meaning
+                similarity = 0.7  → very similar
+                similarity = 0.5  → somewhat related
+                similarity = 0.2  → probably irrelevant
+        Fix 2 — Added relevance threshold
+                csharpif (similarity >= threshold)  // default 0.5
+                results.Add(reader.GetString(0));
+
+                Now chunks must **earn their place** in the context. If nothing crosses the threshold, we return an honest "I don't know" instead of hallucinating.
+
+                Threshold tuning guide:
+                0.3 → loose, more results, risk of noise
+                0.5 → balanced, good default ✅
+                0.7 → strict, only highly relevant chunks
+        
+        Fix 3 — Added HNSW index
+                CREATE INDEX ON documents 
+                USING hnsw (embedding vector_cosine_ops);
+
+                HNSW stands for **Hierarchical Navigable Small World**. Instead of checking every row, it builds a smart graph that finds similar vectors in milliseconds even with millions of rows.
+                        Without HNSW:                With HNSW:
+                        Check row 1...               Jump directly to
+                        Check row 2...               approximate nearest
+                        Check row 3...               neighbors via graph
+                        ...                          
+                        Check row 100,000            Done in milliseconds ✅
+
+                This is what every production vector database (Pinecone, Weaviate, Qdrant) uses internally.
+
+                ### Operator cheatsheet
+
+                | Operator | Metric | Use for |
+                |---|---|---|
+                | `<->` | Euclidean distance | Images, spatial data |
+                | `<=>` | Cosine distance | Text embeddings ✅ |
+                | `<#>` | Negative inner product | Normalized vectors |
+
+                ### The fix in simple terms
+                Before: always pick the 3 closest people in the room
+                        even if they know nothing about your topic
+
+                After:  find people whose knowledge actually matches your question
+                        if nobody qualifies, say "I don't know" honestly
+                        use a smart directory to find them instantly
+                        
+
+✅ Improvement #4 — Proper prompt engineering (system/user separation)
+        **Fix 1 — Separated system and user messages
+                messages = new[]
+                {
+                new { role = "system", content = systemPrompt },
+                new { role = "user",   content = userPrompt   }
+                }
+                The system prompt is the LLM's **briefing**. It defines the role, rules, and constraints before any content is seen. The user prompt carries the actual context and question cleanly separated.
+        **Fix 2 — Replaced hallucination instruction with strict grounding**
+                Before: "use your general knowledge as fallback"
+                After:  "ONLY use information from the provided context"
+                Now the LLM is explicitly forbidden from going outside the document.
+        **Fix 3 — Defined a specific, consistent fallback phrase**
+                "If the context does not contain enough information, respond exactly with:
+                'I don't have enough information in the document to answer this question.'"
+
+✅ Improvement #5 — Dependency injection + RagService orchestration layer
+        **Fix 1 — Registered all services in the DI container
+                Now the DI container owns the creation and lifetime of every service. You never write `new ServiceName()` again.
+        **Fix 2 — Created `RagService` as an orchestration layer**
+                All pipeline logic moved out of `Program.cs` into `RagService`:
+                RagService
+                ├── IndexDocumentAsync()  → owns the full indexing pipeline
+                └── AskAsync()            → owns the full query pipeline
+        **Fix 3 — Services now receive dependencies instead of creating them
+                ### What the structure looks like now
+                Program.cs
+                │
+                ├── Registers all services in DI container
+                ├── Calls RagService.IndexDocumentAsync() on startup
+                └── Defines /ask route → delegates to RagService
+
+                RagService.cs
+                ├── IndexDocumentAsync() → orchestrates indexing pipeline
+                └── AskAsync()          → orchestrates query pipeline
+
+                Individual Services → each does exactly ONE job
+                ├── PdfService       → extract text from PDF
+                ├── ChunkService     → split text into chunks
+                ├── FileHashService  → compute file hash
+                ├── EmbeddingService → generate embeddings
+                ├── VectorDbService  → insert and search vectors
+                └── GroqService      → call the LLM
+                
+                ### Service lifetimes — important concept
+
+                When registering with DI you choose a lifetime:
+
+                | Lifetime | Meaning | Use for |
+                |---|---|---|
+                | `AddSingleton` | One instance for entire app lifetime | Stateless services, DB connections |
+                | `AddScoped` | One instance per HTTP request | Services with per-request state |
+                | `AddTransient` | New instance every time it's requested | Lightweight, stateless utilities |
+
+                We used `Singleton` for all services because they are stateless and expensive to create. Create once, reuse forever.
+
+                ### The fix in simple terms
+                Before: one person doing every job in the company
+                        hiring, accounting, sales, delivery — all them
+                        adding one new task means rewriting their entire job description
+
+                After:  each person has one clearly defined job
+                        a manager (RagService) coordinates them
+                        HR (DI container) handles hiring and staffing
+                        adding a new feature = add one new specialist
 
 
-====== 
-```
+✅ Improvement #6 — Connection pooling (one DataSource for app lifetime)
+        **Every single method was rebuilding the entire `NpgsqlDataSource` from scratch.**
+                This means:
+                - Every chunk inserted during indexing → full connection setup
+                - Every user question → full connection setup
+                - 100 users simultaneously → 100 separate full connection setups
+                ### Why is this so expensive?
 
----
+                Opening a database connection is not just a function call. It involves:
+                1. DNS resolution     → find the database server
+                2. TCP handshake      → establish network connection
+                3. SSL negotiation    → secure the connection
+                4. Authentication     → verify username and password
+                5. Session setup      → initialize database session
+        Built the NpgsqlDataSource once in the constructor and reused it everywhere.
+                ### How connection pooling actually works
 
-### Operator Cheatsheet
+                `NpgsqlDataSource` maintains a **pool** of already-open connections internally. When you call `OpenConnectionAsync()`:
+                First few calls:
+                Request → no free connection in pool → open new one → use it → return to pool
 
-| Operator | Metric | Use for |
-|---|---|---|
-| `<->` | Euclidean distance | Images, spatial data |
-| `<=>` | Cosine distance | Text embeddings ✅ |
-| `<#>` | Negative inner product | When vectors are normalized |
+                Subsequent calls:
+                Request → free connection available in pool → borrow it → use it → return to pool
 
----
+                The key word is **return to pool** — the connection isn't destroyed after use, it goes back into the pool ready for the next request.
+                WITHOUT pooling (your original code):
+                Request 1 → build DataSource → open connection → query → destroy everything
+                Request 2 → build DataSource → open connection → query → destroy everything
+                Request 3 → build DataSource → open connection → query → destroy everything
+                                ↑ full setup cost every single time
 
-### Tuning the Threshold
-```
-threshold = 0.3  → very loose, returns more chunks, risk of noise
-threshold = 0.5  → balanced, good default
-threshold = 0.7  → very strict, only highly relevant chunks
+                WITH pooling (after fix):
+                App starts → build DataSource ONCE → pool created with connections ready
+                Request 1  → borrow connection → query → return to pool
+                Request 2  → borrow connection → query → return to pool
+                Request 3  → borrow connection → query → return to pool
+                        ↑ near zero overhead after first setup
+✅ Improvement #7 — Conversation memory with per-session history
+
+        What was the problem?
+        Try this with the original system:
+                You:       "Who is the main person mentioned in this document?"
+                Assistant: "The document mentions John Smith as the CEO."
+
+                You:       "What is his role?"
+                Assistant: "I don't have enough information to answer this question."
+
+                No history. No memory. The LLM received only:
+                        - The current question
+                        - Retrieved chunks for that question
+                It had absolutely no idea what was said before. "What is his role?" gets embedded and sent to pgvector — but there's no "his" in your database. The embedding matches nothing. Retrieval fails. You get a useless answer.
+
+        ### Why are LLMs stateless?
+                LLMs have no memory between API calls by design. Every call to the Groq API is a completely fresh request — it's like talking to someone with amnesia after every sentence.
+                Call 1: "Who is John Smith?"      → LLM answers, then forgets everything
+                Call 2: "What is his role?"       → LLM has no idea who "his" refers to
+                This is not a bug — it's how all LLMs work. The solution is to **send the conversation history with every request.**
+
+        ### What did we fix?
+                **Maintained a conversation history per session, sent it with every LLM call.**
+
+                The key insight is simple:
+                Instead of sending:
+                [user: "What is his role?"]
+
+                Send:
+                [user: "Who is the main person?"]        ← previous question
+                [assistant: "The document mentions..."]  ← previous answer
+                [user: "What is his role?"]              ← current question
+
+                ### The full flow now
+                Browser opens
+                ↓
+                Generates conversationId = "abc-123"  (stays same for whole session)
+                ↓
+                Question 1: "Who is mentioned in this document?"
+                ↓
+                POST { question: "Who is mentioned?", conversationId: "abc-123" }
+                ↓
+                Server: history["abc-123"] = []  (empty, first message)
+                ↓
+                Retrieve chunks → build context → send to LLM with empty history
+                ↓
+                LLM answers: "John Smith is mentioned as CEO"
+                ↓
+                Save to history["abc-123"]:
+                [user: "Who is mentioned?", assistant: "John Smith is mentioned as CEO"]
+                ↓
+                Question 2: "What is his role?"
+                ↓
+                POST { question: "What is his role?", conversationId: "abc-123" }
+                ↓
+                Server: history["abc-123"] found → has previous turn
+                ↓
+                Send to LLM: [previous turn] + [new question]
+                ↓
+                LLM resolves "his" = John Smith → answers correctly ✅
+                
+                // Keep last 10 messages to avoid token limit issues
+                        if (history.Count > 10) history.RemoveRange(0, history.Count - 10);
+                        LLMs have a **token limit** — a maximum amount of text they can process in one call. If you send an entire conversation history from a 2-hour session, you'll exceed the limit and the API call fails.
+        private readonly Dictionary<string, List<ChatMessage>> _conversations = new();
+
+        This means:
+                Problem 1: App restarts → all conversations lost
+                Problem 2: Two server instances → they don't share memory
+                        User hits Server A → history on A
+                        Next request hits Server B → history not found
+
+        **Production solution: store history in Redis**
+                Redis: key-value store, runs in memory, extremely fast
+                        It's already in memory
+                        Redis stores everything in RAM by default. 
+                        Reading chat history on every request needs to be near-instant. 
+                        Redis reads in microseconds. PostgreSQL reads in milliseconds. 
+                        For high traffic this difference matters.
+                persists across restarts
+                shared across all server instances
+                supports TTL (auto-expire old sessions after e.g. 24 hours)
+                
+        For an interview project, in-memory is perfectly fine — **as long as you can articulate this limitation and its solution.** That awareness is what interviewers are looking for.
+
+
+                ### The fix in simple terms
+                Before: every question answered by someone
+                        with no memory of the conversation
+                        like talking to someone with amnesia
+                        after every sentence
+
+                After:  full conversation transcript sent
+                        with every new question
+                        LLM reads the transcript
+                        understands the full context
+                        answers follow-ups correctly
