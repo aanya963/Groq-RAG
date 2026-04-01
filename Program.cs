@@ -33,6 +33,7 @@ builder.Services.AddCors(options =>
 // Register all services with DI container
 //Now the DI container owns the creation and lifetime of every service. You never write `new ServiceName()` again.
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton<RedisService>();
 builder.Services.AddSingleton<PdfService>();
 builder.Services.AddSingleton<ChunkService>();
 builder.Services.AddSingleton<FileHashService>();
@@ -53,7 +54,11 @@ app.MapPost("/ask", async (QuestionRequest request, RagService rag) =>
     var answer = await rag.AskAsync(request.Question, request.ConversationId);
     return Results.Ok(new { answer });
 });
-
+app.MapGet("/history/{conversationId}", async (string conversationId, RedisService redis) =>
+{
+    var history = await redis.GetConversation(conversationId);
+    return Results.Ok(history);
+});
 
 app.Run();
 

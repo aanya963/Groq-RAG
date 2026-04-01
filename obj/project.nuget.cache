@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "oshxcktCx5Q=",
+  "dgSpecHash": "dj1VWws/jC8=",
   "success": true,
   "projectFilePath": "/Users/aanya/Desktop/Groq-RAG/RAGDemo.csproj",
   "expectedPackageFiles": [
@@ -15,7 +15,10 @@
     "/Users/aanya/.nuget/packages/npgsql.entityframeworkcore.postgresql/9.0.1/npgsql.entityframeworkcore.postgresql.9.0.1.nupkg.sha512",
     "/Users/aanya/.nuget/packages/pgvector/0.3.2/pgvector.0.3.2.nupkg.sha512",
     "/Users/aanya/.nuget/packages/pgvector.entityframeworkcore/0.3.0/pgvector.entityframeworkcore.0.3.0.nupkg.sha512",
+    "/Users/aanya/.nuget/packages/pipelines.sockets.unofficial/2.2.8/pipelines.sockets.unofficial.2.2.8.nupkg.sha512",
     "/Users/aanya/.nuget/packages/sprache/2.3.1/sprache.2.3.1.nupkg.sha512",
+    "/Users/aanya/.nuget/packages/stackexchange.redis/2.12.8/stackexchange.redis.2.12.8.nupkg.sha512",
+    "/Users/aanya/.nuget/packages/system.io.hashing/10.0.2/system.io.hashing.10.0.2.nupkg.sha512",
     "/Users/aanya/.nuget/packages/system.text.json/10.0.3/system.text.json.10.0.3.nupkg.sha512",
     "/Users/aanya/.nuget/packages/uglytoad.pdfpig/1.7.0-custom-5/uglytoad.pdfpig.1.7.0-custom-5.nupkg.sha512",
     "/Users/aanya/.nuget/packages/uglytoad.pdfpig.core/1.7.0-custom-5/uglytoad.pdfpig.core.1.7.0-custom-5.nupkg.sha512",

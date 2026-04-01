@@ -8,9 +8,7 @@ namespace RAGDemo.Services
         private readonly VectorDbService _vectorDb;
         private readonly GroqService _groqService;
         private readonly FileHashService _hashService;
-
-        // In-memory store: conversationId → list of messages
-        private readonly Dictionary<string, List<ChatMessage>> _conversations = new();
+        private readonly RedisService _redisService;
 
         public RagService(
             PdfService pdfService,
@@ -18,7 +16,8 @@ namespace RAGDemo.Services
             EmbeddingService embeddingService,
             VectorDbService vectorDb,
             GroqService groqService,
-            FileHashService hashService)
+            FileHashService hashService,
+            RedisService redisService)
         {
             _pdfService = pdfService;
             _chunkService = chunkService;
@@ -26,12 +25,17 @@ namespace RAGDemo.Services
             _vectorDb = vectorDb;
             _groqService = groqService;
             _hashService = hashService;
+            _redisService = redisService;
         }
 
+        // -----------------------------
+        // INDEXING PHASE
+        // -----------------------------
         public async Task IndexDocumentAsync(string pdfPath)
         {
             var fileHash = _hashService.ComputeHash(pdfPath);
 
+            // Avoid duplicate indexing
             if (await _vectorDb.IsAlreadyIndexed(fileHash))
             {
                 Console.WriteLine("Document already indexed. Skipping...");
@@ -52,48 +56,52 @@ namespace RAGDemo.Services
             Console.WriteLine("PDF Indexed!");
         }
 
+        // -----------------------------
+        // QUERY PHASE (RAG + MEMORY)
+        // -----------------------------
         public async Task<string> AskAsync(string question, string conversationId)
         {
-            // If client sends no conversationId, generate a fallback
             if (string.IsNullOrEmpty(conversationId))
                 conversationId = "default";
-            // Get or create history for this conversation
-            if (!_conversations.ContainsKey(conversationId))
-                _conversations[conversationId] = new List<ChatMessage>();
 
-            var history = _conversations[conversationId];
+            // 1. Get history from Redis
+            var history = await _redisService.GetConversation(conversationId);
 
-            // Retrieve relevant chunks
+            // 2. Add current user question FIRST
+            history.Add(new ChatMessage("user", question));
+
+            // 3. Retrieve relevant chunks
             var queryEmbedding = await _embeddingService.GenerateEmbedding(question);
             var chunks = await _vectorDb.SearchSimilar(queryEmbedding);
 
             if (!chunks.Any())
             {
                 var notFound = "I couldn't find relevant information in the document to answer your question.";
-                
-                // Still save to history so follow-ups work
-                history.Add(new ChatMessage("user", question));
+
                 history.Add(new ChatMessage("assistant", notFound));
+
+                await _redisService.SaveConversation(conversationId, history);
+
                 return notFound;
             }
 
+            // 4. Build context
             var context = string.Join("\n", chunks);
+
+            // 5. Call LLM
             var answer = await _groqService.AskLLM(question, context, history);
 
-            // Save this turn to history
-            history.Add(new ChatMessage("user", question));
+            // 6. Save assistant response
             history.Add(new ChatMessage("assistant", answer));
 
-            // Keep last 10 messages to avoid token limit issues
+            // 7. Trim history (avoid token overflow)
             if (history.Count > 10)
                 history.RemoveRange(0, history.Count - 10);
 
-            return answer;
-        }
+            // 8. Save back to Redis
+            await _redisService.SaveConversation(conversationId, history);
 
-        internal async Task AskAsync(string question, object conversationId)
-        {
-            throw new NotImplementedException();
+            return answer;
         }
     }
 }

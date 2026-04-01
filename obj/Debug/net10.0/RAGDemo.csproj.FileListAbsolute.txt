@@ -83,3 +83,6 @@
 /Users/aanya/Desktop/Groq-RAG/obj/Debug/net10.0/staticwebassets.development.json
 /Users/aanya/Desktop/Groq-RAG/obj/Debug/net10.0/staticwebassets.build.endpoints.json
 /Users/aanya/Desktop/Groq-RAG/obj/Debug/net10.0/swae.build.ex.cache
+/Users/aanya/Desktop/Groq-RAG/bin/Debug/net10.0/Pipelines.Sockets.Unofficial.dll
+/Users/aanya/Desktop/Groq-RAG/bin/Debug/net10.0/StackExchange.Redis.dll
+/Users/aanya/Desktop/Groq-RAG/bin/Debug/net10.0/System.IO.Hashing.dll

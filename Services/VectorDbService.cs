@@ -44,34 +44,35 @@ namespace RAGDemo.Services
             await cmd.ExecuteNonQueryAsync();
         }
 
-       public async Task<List<string>> SearchSimilar(float[] embedding, int topK = 5, float threshold = 0.3f)
-       {
-            var results = new List<string>();
+    public async Task<List<(string Content, double Similarity)>> SearchSimilar(float[] embedding, int topK = 5)
+{
+    var results = new List<(string, double)>();
 
-            await using var conn = await _dataSource.OpenConnectionAsync();
+    await using var conn = await _dataSource.OpenConnectionAsync();
 
-            var cmd = new NpgsqlCommand(
-                @"SELECT content, 1 - (embedding <=> @embedding) AS similarity
-                  FROM documents
-                  ORDER BY embedding <=> @embedding
-                  LIMIT @topK",
-                conn
-            );
-            cmd.Parameters.AddWithValue("embedding", new Vector(embedding));
-            cmd.Parameters.AddWithValue("topK", topK);
+    var cmd = new NpgsqlCommand(
+        @"SELECT content, 1 - (embedding <=> @embedding) AS similarity
+          FROM documents
+          ORDER BY embedding <=> @embedding
+          LIMIT @topK",
+        conn
+    );
 
-            await using var reader = await cmd.ExecuteReaderAsync();
+    cmd.Parameters.AddWithValue("embedding", new Vector(embedding));
+    cmd.Parameters.AddWithValue("topK", topK);
 
-            while (await reader.ReadAsync())
-            {
-                var similarity = reader.GetDouble(1);
-                if (similarity >= threshold)
-                    results.Add(reader.GetString(0));
-            }
+    await using var reader = await cmd.ExecuteReaderAsync();
 
-            return results;
-        }
+    while (await reader.ReadAsync())
+    {
+        var content = reader.GetString(0);
+        var similarity = reader.GetDouble(1);
 
+        results.Add((content, similarity));
+    }
+
+    return results;
+}
         public async Task<bool> IsAlreadyIndexed(string fileHash)
         {
             await using var conn = await _dataSource.OpenConnectionAsync();
